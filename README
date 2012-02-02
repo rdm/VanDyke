@@ -1,0 +1,15 @@
+This is a little system test I put together, when I was looking at mustache.
+
+VanDyke is "an obvious variant on mustache".  But it's a complete re-write of mustachjs.
+
+I cloned the 1.1.2 mustache spec, munged it up, got rid of some things I did not like, changed a few things, and made it work to my taste.
+
+For example, boolean conditions are no longer overloaded into {{# }} (though that will sometimes work.  Instead use {{? }}.  The difference is that {{? }} can be given a list without iterating over each element.
+
+And I should perhaps apologize for my naming convention.  I used ALL_CAPS for ordinary data, lower_case for "functions", and CapitalizedNames for things which might or might not be functions.  The result is a bit... ugly.
+
+Oh, and the .html is a test file which is a total kludge, and which assumes that the .spec files are available.  Edit it, replacing VanDyke object with Mustache object to run the same tests on mustachejs...
+
+Finally: this tested out "good enough for my purposes".  But: I did not test for memory leaks.  I did not test for performance.
+
+Caveat Coder

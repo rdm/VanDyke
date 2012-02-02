@@ -1,0 +1,176 @@
+<html><head><title>vandykejs v1.1.2 spec tests</title></head>
+	<body>
+		<div id="status"></div>
+		<div id="testresults"></div>
+		<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+		<script type="text/javascript" src="http://mustache.github.com/extras/mustache.js"></script>
+		<script type="text/javascript" src="vandyke.js"></script>
+		<script type="text/javascript">
+
+// specs= 'comments.yml delimiters.yml interpolation.yml inverted.yml partials.yml sections.yml ~lambdas.yml'.split(' ');
+specs= 'comments.yml delimiters.yml interpolation.yml inverted.yml partials.yml sections.yml'.split(' ');
+// specs= ['sections.yml'];
+
+function warn(msg) {
+	emit('<hr /><h1>'+msg+'</h1>');
+}
+
+function iterate_over(specs) {
+	var file= specs.shift();
+	if (!file) {
+		warn('done');
+		return;
+	}
+	setstatus('loading '+file);
+	jQuery.ajax('specs/'+file, {success: function(data,textStatus,jqXHR) {
+			process(file, data);
+			iterate_over(specs);
+			}
+			, error: function() {warn('error retrieving '+file)}
+			});
+}
+iterate_over(specs);
+
+testresults= document.getElementById('testresults');
+function setstatus(txt) {document.getElementById('status').innerHTML= txt;}
+
+function emit(htm) {
+	testresults.innerHTML+= htm +'\n';
+}
+
+
+var testelementre= /\n    (\S+): ?\|?(.*(?:\n      .*)*)/g;
+// var testre= /\n    desc: ?\|?\s*([\s\S]+?)\n    data: ?\|?\s*([\s\S]+?)\n    (?:partials: ?\|?\s*([\s\S]+?)\n    )?template: ?\|?\s*([\s\S]+?)\n    expected: ?\|?\s*([\s\S]+)/;
+
+self.passcount= 0;
+self.closecount= 0;
+self.farcount= 0;
+self.failcount= 0;
+self.invalidcount= 0;
+
+function extract_object(txt) {
+	txt= txt.replace(/^\s+/, '');
+	try {
+		return eval('('+txt+')');
+	} catch (ex) {
+		try {
+			return eval('({'+txt+'})');
+		} catch (ex) {
+			return eval('({'+txt.replace(/\n/g, ',\n')+'})');
+		}
+	}
+}
+
+// ignore opening and closing quotes on strings, and handle some escapes
+function extract_string(txt) {
+	return txt.replace(/^['"]([\s\S]*)["']$/, '$1').replace(/\\r/g, '\r').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+}
+
+function process(file, text) {
+	text= text.replace(/\r/g, '').replace(/\s*\n\s*\n\s*#.*/g, '');
+	warn(file);
+	var yml= /overview:.*\s*\n([\s\S]*)\ntests:.*\s*\n([\s\S]*)/.exec(text);
+	if (!yml) return emit('<h2>yml not recognized</h2>');
+	emit('<h6><pre>'+yml[1]+'</pre></h6>');
+	var tests= yml[2].split(/\s*\n\s*\n  - /);
+	for (var j= 0; j < tests.length; j++) {
+		var nm= /\bname: (.*)/.exec(tests[j]);
+		if (!nm) {
+			emit('<h2>test '+j+' unrecognized</h2>');
+			emit('test: <pre style="background-color: red">'+tests[j]+'</pre>');
+			invalidcount++;
+			continue;
+		}
+		emit('<h3>'+nm[1]+'</h3>');
+		var test= {};
+		var match;
+		testelementre.lastIndex= 0;
+		while (match= testelementre.exec(tests[j])) {
+			test[match[1]]= match[2];
+		}
+		if (!test.desc) {
+			emit('<h3>test '+j+' unrecognized</h3>');
+			emit('test: <pre style="background-color: orange">'+tests[j]+'</pre>');
+			invalidcount++; 
+			continue;
+		}
+		var desc= test.desc
+		var data= test.data
+		var partialdata= test.partials
+		var template= extract_string(test.template);
+		var expected= extract_string(test.expected);
+		var view, partials= {};
+		try {
+			view= extract_object(data);
+		} catch (ex) {
+			extendedcontent('invalid view: <pre style="background-color: gainsboro">'+data+'</view>',
+			ex.message+' '+(ex.lineNumber||'')+'<br />\n'+
+			'test: <pre style="background-color: orange">'+tests[j]+'</pre>');
+			invalidcount++;
+			continue;
+		}
+		if (partialdata) {
+			try {
+				partials= extract_object(partialdata);
+			} catch (ex) {
+				extendedcontent('invalid partials: <pre style="background-color: gainsboro">'+partialdata+'</view>',
+				ex.message+' '+(ex.lineNumber||'')+'<br />\n'+
+				'test: <pre style="background-color: orange">'+tests[j]+'</pre>');
+				invalidcount++;
+				continue;
+			}
+		}
+		try {
+			// var result= Mustache.to_html(template, view, partials);
+			var result= VanDyke.to_html(template, view, partials);
+		} catch (ex) {
+			extendedcontent('fail: ERROR THROWN WHILE PROCESSING TEMPLATE',
+				ex.message+' '+(ex.lineNumber||'')+'<br />\n'+
+				'test: <pre style="background-color: orange">'+tests[j]+'</pre>');
+			failcount++;
+			continue;
+		}
+		var pass= result == expected;
+		var partialdetail= partialdata? '<br />partials: <pre style="background-color: lightgray">'+partialdata+'</pre>' :'';
+		var detail= 'expected '+(expected.length)+' characters, got '+result.length+
+			'<br />template: <pre style="background-color: aquamarine">'+template+'</pre>'+
+			partialdetail+
+			'<br />data: <pre style="background-color: gold">'+data+'</pre>'+
+			'<br />expected: <pre style="background-color: greenyellow">'+expected+'</pre>'+
+			'<br />got: <pre style="background-color: violet">'+result+'</pre>'+
+			'<br />desc: <pre>'+desc+'</pre>'
+		if (pass) {
+			extendedcontent('<h1>pass</h1>', detail);
+			passcount++;
+			continue;
+		}
+		if (deb(result) == deb(expected)) {
+			extendedcontent('<h2>whitespace difference</h2>', detail)
+			closecount++;
+			continue;
+		}
+		if (result.replace(/\s+/g, '') == expected.replace(/\s+/g, '')) {
+			extendedcontent('<h2>serious whitespace difference</h2>', detail)
+			farcount++;
+			continue;
+		}
+		extendedcontent('<h2>-fail-</h2>', detail)
+		failcount++;
+	}
+	setstatus('passed '+passcount+' tests, minor whitespace difference: '+closecount+', serious whitespace difference: '+farcount+', failed '+failcount+' tests'+ (invalidcount ?', could not parse '+invalidcount+' tests' :''));
+}
+
+function deb(TXT) {
+	return TXT .replace(/\s+/g, ' ') .replace(/^\s+|\s+$/g, '') ;
+}
+
+
+self.autoidcount= 0;
+function extendedcontent(brief, verbose) {
+	var autoid= 'auto'+(++self.autoidcount)+'id';
+	emit('<div onclick="jQuery(\'#'+autoid+'\').toggle()">'+brief+'<div id="'+autoid+'" style="display: none">'+verbose+'</div></div>');
+}
+
+
+		</script>
+</body></html>
